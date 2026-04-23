@@ -180,6 +180,28 @@ async def send_clean_message(message: Message, text: str) -> None:
 		await message.answer(clean_text[start : start + TELEGRAM_MESSAGE_LIMIT])
 
 
+async def healthz_handler(_: web.Request) -> web.Response:
+	return web.json_response({"status": "ok"})
+
+
+async def root_handler(_: web.Request) -> web.Response:
+	return web.Response(text="ok")
+
+
+async def start_health_server() -> web.AppRunner:
+	app = web.Application()
+	app.router.add_get("/healthz", healthz_handler)
+	app.router.add_get("/", root_handler)
+
+	runner = web.AppRunner(app)
+	await runner.setup()
+	site = web.TCPSite(runner, host="0.0.0.0", port=HEALTH_PORT)
+	await site.start()
+
+	logging.info("Healthcheck server started on port %s (/healthz)", HEALTH_PORT)
+	return runner
+
+
 @dp.message(CommandStart())
 async def cmd_start(message: Message) -> None:
 	user_name = message.from_user.first_name if message.from_user else "User"
@@ -234,17 +256,7 @@ async def main() -> None:
 	if not BOT_TOKEN:
 		raise ValueError("Set BOT_TOKEN in environment variables before running.")
 
-	app = web.Application()
-
-	async def healthz(_: web.Request) -> web.Response:
-		return web.json_response({"status": "ok"})
-
-	app.router.add_get("/healthz", healthz)
-	runner = web.AppRunner(app)
-	await runner.setup()
-	site = web.TCPSite(runner, host="0.0.0.0", port=HEALTH_PORT)
-	await site.start()
-	logging.info("Health server is running on 0.0.0.0:%s/healthz", HEALTH_PORT)
+	runner = await start_health_server()
 
 	try:
 		await dp.start_polling(bot)
